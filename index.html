@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Compass Map (Scrolling Header)</title>
+    <title>Compass Map (Fixed)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -10,8 +10,6 @@
     <style>
         body { margin: 0; padding: 0; overflow: hidden; font-family: sans-serif; }
         #map { height: 100vh; width: 100%; }
-        
-        /* --- TEAL DOT & LINE THEME --- */
         
         /* Info Box */
         #info {
@@ -33,75 +31,46 @@
             box-shadow: 0 4px 15px rgba(0,0,0,0.3);
         }
 
-        /* --- COMPASS UI AT BOTTOM --- */
+        /* --- COMPASS UI --- */
         .compass-container {
-            position: fixed;
-            bottom: 0; left: 0; width: 100%;
-            height: 70px;
+            position: fixed; bottom: 0; left: 0; width: 100%; height: 70px;
             background: linear-gradient(to bottom, rgba(255,255,255,0) 0%, rgba(255,255,255,0.9) 30%, #fff 100%);
-            z-index: 1000;
-            overflow: hidden;
-            pointer-events: none; /* Let touches pass through to map if needed */
+            z-index: 1000; overflow: hidden; pointer-events: none;
         }
 
-        /* The Center Indicator (Teal Triangle) */
+        /* The Center Indicator */
         .compass-indicator {
-            position: absolute;
-            bottom: 0; left: 50%;
-            transform: translateX(-50%);
+            position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
             width: 0; height: 0;
-            border-left: 8px solid transparent;
-            border-right: 8px solid transparent;
-            border-bottom: 12px solid #20c997; /* Teal Match */
-            z-index: 1002;
+            border-left: 8px solid transparent; border-right: 8px solid transparent;
+            border-bottom: 12px solid #20c997; z-index: 1002;
         }
         
-        /* The vertical line going up from the indicator */
         .compass-center-line {
-            position: absolute;
-            bottom: 0; left: 50%;
-            width: 2px; height: 40px;
-            background: #20c997;
-            transform: translateX(-50%);
-            z-index: 1002;
+            position: absolute; bottom: 0; left: 50%; width: 2px; height: 40px;
+            background: #20c997; transform: translateX(-50%); z-index: 1002;
         }
 
         /* The Moving Strip */
         .compass-strip {
-            position: absolute;
-            bottom: 0;
-            height: 100%;
-            display: flex;
-            align-items: flex-end;
-            transition: transform 0.1s linear; /* Smooth movement */
+            position: absolute; bottom: 0; height: 100%;
+            display: flex; align-items: flex-end;
+            transition: transform 0.1s linear;
             will-change: transform;
-            left: 50%; /* Start relative to center */
+            left: 50%; /* Start at center */
         }
 
-        /* Individual Ticks */
         .tick {
-            width: 60px; /* Space between numbers */
-            flex-shrink: 0;
-            text-align: center;
-            position: relative;
-            height: 40px;
-            color: #555;
-            font-weight: bold;
-            font-size: 14px;
-            border-left: 1px solid #ccc; /* The tick mark */
+            width: 60px; flex-shrink: 0; text-align: center;
+            position: relative; height: 40px;
+            color: #555; font-weight: bold; font-size: 14px;
+            border-left: 1px solid #ccc;
+            box-sizing: border-box; /* Ensures width includes border */
         }
         
-        .tick span {
-            position: absolute;
-            top: -20px; left: -30px; width: 60px; /* Center text over border */
-        }
+        .tick span { position: absolute; top: -20px; left: -50%; width: 200%; text-align: center; }
         
-        .tick.major {
-            border-left: 2px solid #333;
-            color: #000;
-            font-size: 16px;
-            height: 50px;
-        }
+        .tick.major { border-left: 2px solid #333; color: #000; font-size: 16px; height: 50px; }
 
     </style>
 </head>
@@ -113,8 +82,7 @@
 <div class="compass-container">
     <div class="compass-center-line"></div>
     <div class="compass-indicator"></div>
-    <div class="compass-strip" id="compassStrip">
-        </div>
+    <div class="compass-strip" id="compassStrip"></div>
 </div>
 
 <div id="map"></div>
@@ -125,7 +93,6 @@
 <script>
     // --- 1. SETUP MAP ---
     var map = L.map('map', {zoomControl: false}).setView([0, 0], 2);
-
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap'
     }).addTo(map);
@@ -134,23 +101,24 @@
     var sightLine = null;
     var currentPos = null;
     var currentHeading = 0;
+    
+    // Config: Tweak this if ticks are too wide/narrow
+    const TICK_WIDTH = 60; // pixels
+    const DEG_PER_TICK = 10;
+    const PIXELS_PER_DEG = TICK_WIDTH / DEG_PER_TICK;
 
     // --- 2. GENERATE COMPASS STRIP ---
-    // We create 3 sets of 0-360 degrees to allow infinite scrolling illusion
     const compassStrip = document.getElementById('compassStrip');
-    const pixelPerDegree = 60 / 10; // 60px width / 10 degrees = 6px per degree
 
     function createTicks() {
         let html = '';
-        // Create 3 sets: -360 to 0, 0 to 360, 360 to 720
-        // This ensures when we wrap around North, we have ticks ready
+        // Create 3 sets (-360 to 720) to allow infinite scrolling
         for (let set = -1; set <= 1; set++) {
             for (let i = 0; i < 360; i += 10) {
                 let deg = i;
                 let label = deg;
                 let isMajor = false;
 
-                // Convert numbers to Cardinal Directions
                 if (deg === 0) { label = 'N'; isMajor = true; }
                 else if (deg === 90) { label = 'E'; isMajor = true; }
                 else if (deg === 180) { label = 'S'; isMajor = true; }
@@ -165,23 +133,18 @@
     createTicks();
 
     // --- 3. LOGIC ---
-    
-    // GPS
     if (navigator.geolocation) {
         navigator.geolocation.watchPosition(
             (position) => {
                 const lat = position.coords.latitude;
                 const lng = position.coords.longitude;
                 currentPos = [lng, lat];
-                
                 document.getElementById('info').innerText = `Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}`;
 
-                // Style: Small Teal Dot
                 if (!userMarker) {
                     userMarker = L.circleMarker([lat, lng], {
                         color: 'white', weight: 2,
-                        fillColor: '#20c997', fillOpacity: 1,
-                        radius: 5 
+                        fillColor: '#20c997', fillOpacity: 1, radius: 5 
                     }).addTo(map);
                     map.setView([lat, lng], 16);
                 } else {
@@ -189,19 +152,34 @@
                 }
                 updateVisuals();
             },
-            (error) => console.error(error),
+            (err) => console.error(err),
             { enableHighAccuracy: true }
         );
     }
 
-    // COMPASS EVENT
     function handleOrientation(event) {
         let heading = 0;
+        
+        // 1. Get raw heading
         if (event.webkitCompassHeading) {
-            heading = event.webkitCompassHeading;
+            heading = event.webkitCompassHeading; // iOS
         } else if (event.alpha) {
-            heading = 360 - event.alpha; 
+            heading = 360 - event.alpha; // Android
         }
+
+        // 2. Adjust for Screen Orientation (Landscape vs Portrait)
+        // If the user turns the phone sideways, the "Top" of the phone changes
+        let screenAngle = 0;
+        if (window.screen.orientation) {
+            screenAngle = window.screen.orientation.angle;
+        } else if (window.orientation) {
+            screenAngle = window.orientation;
+        }
+        
+        // Subtract screen angle to keep "North" pointing "Up" relative to the screen top
+        heading = (heading + screenAngle) % 360;
+        if (heading < 0) heading += 360;
+
         currentHeading = heading;
         updateVisuals();
     }
@@ -209,15 +187,14 @@
     function updateVisuals() {
         if (!currentPos) return;
 
-        // A. Draw Map Line
-        var distance = 50000; // km
+        // A. Update Map Line
+        var distance = 50000; 
         var destination = turf.destination(currentPos, distance, currentHeading, { units: 'kilometers' });
         var latlngs = [
             [currentPos[1], currentPos[0]], 
             [destination.geometry.coordinates[1], destination.geometry.coordinates[0]]
         ];
 
-        // Style: Darker Teal, Thin Line
         if (sightLine) {
             sightLine.setLatLngs(latlngs);
         } else {
@@ -226,23 +203,32 @@
             }).addTo(map);
         }
 
-        // B. Update Scrolling Compass Strip
-        // We shift the strip based on degrees.
-        // 0 degrees (N) is our anchor.
-        // Since we rendered 3 sets, we focus on the middle set.
-        // The middle set starts at index 36 (360/10). 
-        // We translate LEFT.
+        // B. Update Compass Strip
+        // Calculation:
+        // 1. We start at the MIDDLE 'N' (Set index 1).
+        //    One set has 36 ticks (360 / 10).
+        //    Width of one set = 36 * 60 = 2160px.
+        // 2. We shift LEFT by 2160px to bring the Middle N to the start.
+        // 3. We shift LEFT by another 30px (Half tick width) to Center the 'N' on the line.
+        // 4. We shift LEFT by currentHeading * pixels_per_degree.
         
-        // Offset Calculation:
-        // 1. Shift to start of middle set: 36 ticks * 60px = 2160px
-        // 2. Add current heading offset: heading * 6px
-        // 3. Apply negative because we move strip left to show right numbers
+        const centerOffset = 2160; // Width of the first set (0-360)
+        const halfTick = TICK_WIDTH / 2; // 30px to center the tick text
+        const degreeShift = currentHeading * PIXELS_PER_DEG;
+
+        let totalOffset = centerOffset + halfTick + degreeShift;
         
-        let totalOffset = (2160) + (currentHeading * 6); 
         compassStrip.style.transform = `translateX(-${totalOffset}px)`;
     }
 
-    // PERMISSIONS
+    // Handle Resize/Rotate to recalculate immediately
+    window.addEventListener('orientationchange', () => {
+        setTimeout(() => {
+            // Trigger a dummy event to force re-calc with new screen angle
+            // Note: Real deviceorientation events fire constantly anyway
+        }, 200);
+    });
+
     const btn = document.getElementById('start-btn');
     if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
         btn.style.display = 'block';
@@ -258,7 +244,6 @@
     } else {
         window.addEventListener('deviceorientation', handleOrientation, true);
     }
-
 </script>
 </body>
 </html>
