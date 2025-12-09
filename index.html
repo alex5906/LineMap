@@ -2,150 +2,144 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Compass Map Line</title>
-    <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
-    <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet">
+    <title>Compass Map (No Key Needed)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
     <style>
         body { margin: 0; padding: 0; }
-        #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+        #map { height: 100vh; width: 100%; }
         
-        /* Button for iOS Permission */
+        #info {
+            position: absolute;
+            top: 10px; left: 10px;
+            z-index: 1000;
+            background: white;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: sans-serif;
+            box-shadow: 0 0 10px rgba(0,0,0,0.2);
+        }
+
         #start-btn {
             position: absolute;
             top: 50%; left: 50%;
             transform: translate(-50%, -50%);
-            z-index: 10;
+            z-index: 2000;
             padding: 15px 30px;
             background: #007cbf;
             color: white;
             border: none;
             border-radius: 5px;
             font-size: 16px;
-            display: none; /* Hidden by default */
+            display: none;
         }
     </style>
 </head>
 <body>
 
-<div id="map"></div>
+<div id="info">Waiting for GPS...</div>
 <button id="start-btn">Enable Compass</button>
+<div id="map"></div>
 
-<script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
 
 <script>
-    // 1. SETUP
-    mapboxgl.accessToken = 'YOUR_MAPBOX_ACCESS_TOKEN_HERE';
-    
-    const map = new mapboxgl.Map({
-        container: 'map',
-        style: 'mapbox://styles/mapbox/dark-v11', // Dark mode makes the line pop
-        center: [0, 0],
-        zoom: 2
-    });
+    // 1. INITIALIZE MAP (OpenStreetMap)
+    var map = L.map('map').setView([0, 0], 2);
 
-    let userLocation = null;
-    let currentHeading = 0;
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
 
-    // 2. INITIALIZE MAP LAYERS
-    map.on('load', () => {
-        // Add a source for the line
-        map.addSource('sight-line', {
-            type: 'geojson',
-            data: {
-                type: 'Feature',
-                geometry: { type: 'LineString', coordinates: [] }
-            }
-        });
+    var userMarker = null;
+    var sightLine = null;
+    var currentPos = null;
+    var currentHeading = 0;
 
-        // Add the line layer
-        map.addLayer({
-            id: 'sight-line-layer',
-            type: 'line',
-            source: 'sight-line',
-            layout: {
-                'line-cap': 'round',
-                'line-join': 'round'
+    // 2. GET USER LOCATION
+    // Note: This requires HTTPS or Localhost!
+    if (navigator.geolocation) {
+        navigator.geolocation.watchPosition(
+            (position) => {
+                const lat = position.coords.latitude;
+                const lng = position.coords.longitude;
+                currentPos = [lng, lat]; // Turf uses [lng, lat]
+
+                document.getElementById('info').innerText = `Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}`;
+
+                // Update or create user marker
+                if (!userMarker) {
+                    userMarker = L.circleMarker([lat, lng], {
+                        color: 'blue',
+                        radius: 8,
+                        fillOpacity: 1
+                    }).addTo(map);
+                    map.setView([lat, lng], 13);
+                } else {
+                    userMarker.setLatLng([lat, lng]);
+                }
+                
+                updateLine();
             },
-            paint: {
-                'line-color': '#00ffcc', // Cyan neon color
-                'line-width': 4,
-                'line-opacity': 0.8
-            }
-        });
+            (error) => {
+                console.error("Error getting location:", error);
+                document.getElementById('info').innerText = "GPS Error: " + error.message;
+            },
+            { enableHighAccuracy: true }
+        );
+    } else {
+        alert("Geolocation is not supported by this browser.");
+    }
 
-        // Add a pulsing dot for the user
-        const geolocate = new mapboxgl.GeolocateControl({
-            positionOptions: { enableHighAccuracy: true },
-            trackUserLocation: true,
-            showUserHeading: false // We are drawing our own heading line
-        });
-
-        map.addControl(geolocate);
-        
-        // Trigger geolocation immediately
-        map.on('load', () => {
-            geolocate.trigger();
-        });
-
-        // Update userLocation variable whenever geolocate updates
-        geolocate.on('geolocate', (e) => {
-            userLocation = [e.coords.longitude, e.coords.latitude];
-            updateLine();
-        });
-    });
-
-    // 3. HANDLE DEVICE ORIENTATION
+    // 3. HANDLE COMPASS
     function handleOrientation(event) {
         let heading = 0;
         
-        // iOS specific property
+        // iOS
         if (event.webkitCompassHeading) {
             heading = event.webkitCompassHeading;
         } 
-        // Android / Standard
+        // Android/Other
         else if (event.alpha) {
-            heading = 360 - event.alpha;
+            // Convert alpha to compass heading
+            heading = 360 - event.alpha; 
         }
-        
+
         currentHeading = heading;
         updateLine();
     }
 
-    // 4. MATH: DRAW THE INFINITE LINE
+    // 4. DRAW THE LINE
     function updateLine() {
-        if (!userLocation) return;
+        if (!currentPos) return;
 
-        // Use Turf.js to calculate a point 50,000km away at the current heading
-        // This ensures the line looks infinite
-        const distance = 50000; // km
-        const options = { units: 'kilometers' };
+        // Calculate destination 50,000km away
+        // Turf uses [Longitude, Latitude] order
+        var distance = 50000; 
+        var options = { units: 'kilometers' };
+        var destination = turf.destination(currentPos, distance, currentHeading, options);
         
-        // Calculate destination point based on bearing
-        const destination = turf.destination(userLocation, distance, currentHeading, options);
-        
-        const lineGeoJSON = {
-            type: 'Feature',
-            geometry: {
-                type: 'LineString',
-                coordinates: [
-                    userLocation,
-                    destination.geometry.coordinates
-                ]
-            }
-        };
+        // Leaflet uses [Latitude, Longitude] order, so we must flip them for the map line
+        var latlngs = [
+            [currentPos[1], currentPos[0]], // Start (User)
+            [destination.geometry.coordinates[1], destination.geometry.coordinates[0]] // End (Far away)
+        ];
 
-        // Update the map source
-        if (map.getSource('sight-line')) {
-            map.getSource('sight-line').setData(lineGeoJSON);
+        if (sightLine) {
+            sightLine.setLatLngs(latlngs);
+        } else {
+            sightLine = L.polyline(latlngs, {color: 'red', weight: 4}).addTo(map);
         }
     }
 
-    // 5. PERMISSIONS (CRITICAL FOR iOS)
+    // 5. iOS PERMISSION BUTTON
     const btn = document.getElementById('start-btn');
     
-    // Check if we need to ask for permission (iOS 13+)
-    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+    // Check if iOS 13+ permission is needed
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
         btn.style.display = 'block';
         btn.addEventListener('click', () => {
             DeviceOrientationEvent.requestPermission()
@@ -160,7 +154,6 @@
                 .catch(console.error);
         });
     } else {
-        // Non-iOS 13+ devices usually don't need explicit permission
         window.addEventListener('deviceorientation', handleOrientation, true);
     }
 
