@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Compass Map Line</title>
+    <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+    <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet">
+    <style>
+        body { margin: 0; padding: 0; }
+        #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+        
+        /* Button for iOS Permission */
+        #start-btn {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 10;
+            padding: 15px 30px;
+            background: #007cbf;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            display: none; /* Hidden by default */
+        }
+    </style>
+</head>
+<body>
+
+<div id="map"></div>
+<button id="start-btn">Enable Compass</button>
+
+<script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+
+<script>
+    // 1. SETUP
+    mapboxgl.accessToken = 'YOUR_MAPBOX_ACCESS_TOKEN_HERE';
+    
+    const map = new mapboxgl.Map({
+        container: 'map',
+        style: 'mapbox://styles/mapbox/dark-v11', // Dark mode makes the line pop
+        center: [0, 0],
+        zoom: 2
+    });
+
+    let userLocation = null;
+    let currentHeading = 0;
+
+    // 2. INITIALIZE MAP LAYERS
+    map.on('load', () => {
+        // Add a source for the line
+        map.addSource('sight-line', {
+            type: 'geojson',
+            data: {
+                type: 'Feature',
+                geometry: { type: 'LineString', coordinates: [] }
+            }
+        });
+
+        // Add the line layer
+        map.addLayer({
+            id: 'sight-line-layer',
+            type: 'line',
+            source: 'sight-line',
+            layout: {
+                'line-cap': 'round',
+                'line-join': 'round'
+            },
+            paint: {
+                'line-color': '#00ffcc', // Cyan neon color
+                'line-width': 4,
+                'line-opacity': 0.8
+            }
+        });
+
+        // Add a pulsing dot for the user
+        const geolocate = new mapboxgl.GeolocateControl({
+            positionOptions: { enableHighAccuracy: true },
+            trackUserLocation: true,
+            showUserHeading: false // We are drawing our own heading line
+        });
+
+        map.addControl(geolocate);
+        
+        // Trigger geolocation immediately
+        map.on('load', () => {
+            geolocate.trigger();
+        });
+
+        // Update userLocation variable whenever geolocate updates
+        geolocate.on('geolocate', (e) => {
+            userLocation = [e.coords.longitude, e.coords.latitude];
+            updateLine();
+        });
+    });
+
+    // 3. HANDLE DEVICE ORIENTATION
+    function handleOrientation(event) {
+        let heading = 0;
+        
+        // iOS specific property
+        if (event.webkitCompassHeading) {
+            heading = event.webkitCompassHeading;
+        } 
+        // Android / Standard
+        else if (event.alpha) {
+            heading = 360 - event.alpha;
+        }
+        
+        currentHeading = heading;
+        updateLine();
+    }
+
+    // 4. MATH: DRAW THE INFINITE LINE
+    function updateLine() {
+        if (!userLocation) return;
+
+        // Use Turf.js to calculate a point 50,000km away at the current heading
+        // This ensures the line looks infinite
+        const distance = 50000; // km
+        const options = { units: 'kilometers' };
+        
+        // Calculate destination point based on bearing
+        const destination = turf.destination(userLocation, distance, currentHeading, options);
+        
+        const lineGeoJSON = {
+            type: 'Feature',
+            geometry: {
+                type: 'LineString',
+                coordinates: [
+                    userLocation,
+                    destination.geometry.coordinates
+                ]
+            }
+        };
+
+        // Update the map source
+        if (map.getSource('sight-line')) {
+            map.getSource('sight-line').setData(lineGeoJSON);
+        }
+    }
+
+    // 5. PERMISSIONS (CRITICAL FOR iOS)
+    const btn = document.getElementById('start-btn');
+    
+    // Check if we need to ask for permission (iOS 13+)
+    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+        btn.style.display = 'block';
+        btn.addEventListener('click', () => {
+            DeviceOrientationEvent.requestPermission()
+                .then(response => {
+                    if (response === 'granted') {
+                        window.addEventListener('deviceorientation', handleOrientation, true);
+                        btn.style.display = 'none';
+                    } else {
+                        alert('Permission denied');
+                    }
+                })
+                .catch(console.error);
+        });
+    } else {
+        // Non-iOS 13+ devices usually don't need explicit permission
+        window.addEventListener('deviceorientation', handleOrientation, true);
+    }
+
+</script>
+</body>
+</html>
