@@ -2,25 +2,93 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Compass Map (Fixed)</title>
+    <title>Compass Map (Calibrate)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     
     <style>
-        body { margin: 0; padding: 0; overflow: hidden; font-family: sans-serif; }
+        body { margin: 0; padding: 0; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
         #map { height: 100vh; width: 100%; }
         
-        /* Info Box */
-        #info {
-            position: absolute; top: 10px; left: 10px; z-index: 1000;
-            background: rgba(255, 255, 255, 0.9);
-            padding: 8px 12px; border-radius: 4px;
-            font-size: 14px; color: #333;
-            box-shadow: 0 0 10px rgba(0,0,0,0.2);
+        /* --- CALIBRATION PANEL (TOP) --- */
+        .calibration-panel {
+            position: fixed;
+            top: 0; left: 0; width: 100%;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 15px 20px;
+            box-sizing: border-box;
+            z-index: 3000; /* Highest priority */
+            border-bottom: 1px solid #ddd;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-align: center;
         }
 
-        /* Permission Button */
+        .cal-header {
+            font-size: 16px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 4px;
+        }
+
+        .cal-desc {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 10px;
+        }
+
+        .cal-controls {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+        }
+
+        /* Custom Slider Styling */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 70%;
+            background: transparent;
+        }
+        
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 20px;
+            width: 20px;
+            border-radius: 50%;
+            background: #20c997; /* Teal */
+            cursor: pointer;
+            margin-top: -8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+        }
+        
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: #ddd;
+            border-radius: 2px;
+        }
+
+        .cal-value {
+            font-family: monospace;
+            font-size: 14px;
+            color: #20c997;
+            font-weight: bold;
+            width: 40px;
+            text-align: right;
+        }
+
+        /* --- INFO BOX (Moved down slightly to avoid overlap) --- */
+        #info {
+            position: absolute; top: 110px; left: 10px; z-index: 1000;
+            background: rgba(255, 255, 255, 0.8);
+            padding: 5px 8px; border-radius: 4px;
+            font-size: 12px; color: #333;
+            pointer-events: none;
+        }
+
+        /* --- PERMISSION BUTTON --- */
         #start-btn {
             position: absolute; top: 50%; left: 50%;
             transform: translate(-50%, -50%); z-index: 2000;
@@ -31,14 +99,13 @@
             box-shadow: 0 4px 15px rgba(0,0,0,0.3);
         }
 
-        /* --- COMPASS UI --- */
+        /* --- COMPASS UI (BOTTOM) --- */
         .compass-container {
             position: fixed; bottom: 0; left: 0; width: 100%; height: 70px;
             background: linear-gradient(to bottom, rgba(255,255,255,0) 0%, rgba(255,255,255,0.9) 30%, #fff 100%);
             z-index: 1000; overflow: hidden; pointer-events: none;
         }
 
-        /* The Center Indicator */
         .compass-indicator {
             position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
             width: 0; height: 0;
@@ -51,13 +118,12 @@
             background: #20c997; transform: translateX(-50%); z-index: 1002;
         }
 
-        /* The Moving Strip */
         .compass-strip {
             position: absolute; bottom: 0; height: 100%;
             display: flex; align-items: flex-end;
             transition: transform 0.1s linear;
             will-change: transform;
-            left: 50%; /* Start at center */
+            left: 50%;
         }
 
         .tick {
@@ -65,16 +131,24 @@
             position: relative; height: 40px;
             color: #555; font-weight: bold; font-size: 14px;
             border-left: 1px solid #ccc;
-            box-sizing: border-box; /* Ensures width includes border */
+            box-sizing: border-box;
         }
         
         .tick span { position: absolute; top: -20px; left: -50%; width: 200%; text-align: center; }
-        
         .tick.major { border-left: 2px solid #333; color: #000; font-size: 16px; height: 50px; }
 
     </style>
 </head>
 <body>
+
+<div class="calibration-panel">
+    <div class="cal-header">Compass Calibration</div>
+    <div class="cal-desc">Drag slider to align the line with the real world</div>
+    <div class="cal-controls">
+        <input type="range" id="calSlider" min="-180" max="180" value="0">
+        <span class="cal-value" id="calValue">0°</span>
+    </div>
+</div>
 
 <div id="info">Waiting for GPS...</div>
 <button id="start-btn">Enable Compass</button>
@@ -91,7 +165,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
 
 <script>
-    // --- 1. SETUP MAP ---
+    // --- 1. SETUP ---
     var map = L.map('map', {zoomControl: false}).setView([0, 0], 2);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap'
@@ -100,19 +174,32 @@
     var userMarker = null;
     var sightLine = null;
     var currentPos = null;
-    var currentHeading = 0;
+    var rawHeading = 0;      // The raw data from device
+    var calibrationOffset = 0; // The user adjustment
     
-    // Config: Tweak this if ticks are too wide/narrow
-    const TICK_WIDTH = 60; // pixels
+    const TICK_WIDTH = 60; 
     const DEG_PER_TICK = 10;
     const PIXELS_PER_DEG = TICK_WIDTH / DEG_PER_TICK;
 
-    // --- 2. GENERATE COMPASS STRIP ---
-    const compassStrip = document.getElementById('compassStrip');
+    // --- 2. CALIBRATION LISTENER ---
+    const slider = document.getElementById('calSlider');
+    const calVal = document.getElementById('calValue');
 
+    slider.addEventListener('input', (e) => {
+        calibrationOffset = parseInt(e.target.value);
+        
+        // Update text label
+        const sign = calibrationOffset > 0 ? '+' : '';
+        calVal.innerText = `${sign}${calibrationOffset}°`;
+        
+        // Force visual update immediately
+        updateVisuals();
+    });
+
+    // --- 3. GENERATE COMPASS STRIP ---
+    const compassStrip = document.getElementById('compassStrip');
     function createTicks() {
         let html = '';
-        // Create 3 sets (-360 to 720) to allow infinite scrolling
         for (let set = -1; set <= 1; set++) {
             for (let i = 0; i < 360; i += 10) {
                 let deg = i;
@@ -132,7 +219,7 @@
     }
     createTicks();
 
-    // --- 3. LOGIC ---
+    // --- 4. GPS & ORIENTATION ---
     if (navigator.geolocation) {
         navigator.geolocation.watchPosition(
             (position) => {
@@ -159,16 +246,13 @@
 
     function handleOrientation(event) {
         let heading = 0;
-        
-        // 1. Get raw heading
         if (event.webkitCompassHeading) {
-            heading = event.webkitCompassHeading; // iOS
+            heading = event.webkitCompassHeading;
         } else if (event.alpha) {
-            heading = 360 - event.alpha; // Android
+            heading = 360 - event.alpha;
         }
 
-        // 2. Adjust for Screen Orientation (Landscape vs Portrait)
-        // If the user turns the phone sideways, the "Top" of the phone changes
+        // Adjust for Screen Rotation
         let screenAngle = 0;
         if (window.screen.orientation) {
             screenAngle = window.screen.orientation.angle;
@@ -176,20 +260,23 @@
             screenAngle = window.orientation;
         }
         
-        // Subtract screen angle to keep "North" pointing "Up" relative to the screen top
         heading = (heading + screenAngle) % 360;
         if (heading < 0) heading += 360;
 
-        currentHeading = heading;
+        rawHeading = heading;
         updateVisuals();
     }
 
     function updateVisuals() {
         if (!currentPos) return;
 
+        // Apply Calibration
+        let finalHeading = (rawHeading + calibrationOffset) % 360;
+        if (finalHeading < 0) finalHeading += 360;
+
         // A. Update Map Line
         var distance = 50000; 
-        var destination = turf.destination(currentPos, distance, currentHeading, { units: 'kilometers' });
+        var destination = turf.destination(currentPos, distance, finalHeading, { units: 'kilometers' });
         var latlngs = [
             [currentPos[1], currentPos[0]], 
             [destination.geometry.coordinates[1], destination.geometry.coordinates[0]]
@@ -204,31 +291,15 @@
         }
 
         // B. Update Compass Strip
-        // Calculation:
-        // 1. We start at the MIDDLE 'N' (Set index 1).
-        //    One set has 36 ticks (360 / 10).
-        //    Width of one set = 36 * 60 = 2160px.
-        // 2. We shift LEFT by 2160px to bring the Middle N to the start.
-        // 3. We shift LEFT by another 30px (Half tick width) to Center the 'N' on the line.
-        // 4. We shift LEFT by currentHeading * pixels_per_degree.
-        
-        const centerOffset = 2160; // Width of the first set (0-360)
-        const halfTick = TICK_WIDTH / 2; // 30px to center the tick text
-        const degreeShift = currentHeading * PIXELS_PER_DEG;
+        const centerOffset = 2160; 
+        const halfTick = TICK_WIDTH / 2; 
+        const degreeShift = finalHeading * PIXELS_PER_DEG;
 
         let totalOffset = centerOffset + halfTick + degreeShift;
-        
         compassStrip.style.transform = `translateX(-${totalOffset}px)`;
     }
 
-    // Handle Resize/Rotate to recalculate immediately
-    window.addEventListener('orientationchange', () => {
-        setTimeout(() => {
-            // Trigger a dummy event to force re-calc with new screen angle
-            // Note: Real deviceorientation events fire constantly anyway
-        }, 200);
-    });
-
+    // Permission Handling
     const btn = document.getElementById('start-btn');
     if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
         btn.style.display = 'block';
