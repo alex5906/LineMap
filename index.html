@@ -20,7 +20,7 @@
             font-family: 'Courier New', Courier, monospace;
             color: white;
             overflow: hidden;
-            user-select: none; /* Prevent text selection */
+            user-select: none; 
         }
 
         /* --- 1. TOP COMPASS SECTION --- */
@@ -29,7 +29,7 @@
             border-bottom: 2px solid #333;
             flex-shrink: 0;
             padding-top: env(safe-area-inset-top); 
-            cursor: ew-resize; /* Indicates swipable */
+            cursor: ew-resize; 
         }
 
         #compass-content {
@@ -51,7 +51,7 @@
             background-color: rgba(26, 26, 26, 0.9);
             padding: 2px 10px;
             border-radius: 5px;
-            pointer-events: none; /* Let swipes pass through */
+            pointer-events: none; 
         }
 
         #indicator {
@@ -138,7 +138,7 @@
             height: 50px;
             background-color: rgba(0, 0, 0, 0.8);
             border-radius: 50%;
-            z-index: 1000; /* Above map */
+            z-index: 1000; 
             display: flex;
             align-items: center;
             justify-content: center;
@@ -266,9 +266,11 @@
 
     <script>
         // --- 1. CONFIG & STATE ---
-        let currentHeading = 0; // The raw sensor heading
-        let calibrationOffset = 0; // Offset from swiping
-        let isLocked = false; // Is the compass frozen?
+        let currentHeading = 0; 
+        let currentLat = null;
+        let currentLng = null;
+        let calibrationOffset = 0; 
+        let isLocked = false; 
         
         // --- 2. MAP SETUP ---
         const map = L.map('map', { 
@@ -294,9 +296,37 @@
             stroke: false
         }).addTo(map);
 
+        // THE HEADING LINE
+        const headingLine = L.polyline([], {
+            color: '#ff3b30', // Red
+            weight: 3,
+            opacity: 0.7
+        }).addTo(map);
+
         let firstFix = true;
 
-        // --- 3. COMPASS TAPE SETUP ---
+        // --- 3. GEOMETRY HELPERS ---
+        function toRad(deg) { return deg * Math.PI / 180; }
+        function toDeg(rad) { return rad * 180 / Math.PI; }
+
+        // Calculate destination point given distance and bearing
+        function getDestinationPoint(lat, lng, brngDeg, distMiles) {
+            const R = 3958.8; // Radius of Earth in miles
+            const distRatio = distMiles / R;
+            const brngRad = toRad(brngDeg);
+            const latRad = toRad(lat);
+            const lonRad = toRad(lng);
+
+            const lat2Rad = Math.asin(Math.sin(latRad) * Math.cos(distRatio) +
+                                      Math.cos(latRad) * Math.sin(distRatio) * Math.cos(brngRad));
+            
+            const lon2Rad = lonRad + Math.atan2(Math.sin(brngRad) * Math.sin(distRatio) * Math.cos(latRad),
+                                                Math.cos(distRatio) - Math.sin(latRad) * Math.sin(lat2Rad));
+            
+            return [toDeg(lat2Rad), toDeg(lon2Rad)];
+        }
+
+        // --- 4. COMPASS TAPE SETUP ---
         const tape = document.getElementById('compass-tape');
         const headingDisplay = document.getElementById('heading-text');
         
@@ -318,23 +348,33 @@
         }
         tape.innerHTML = tapeHtml;
 
-        // --- 4. COMPASS & CALIBRATION LOGIC ---
+        // --- 5. COMPASS & CALIBRATION LOGIC ---
         
-        function updateCompassUI(rawHeading) {
-            if (isLocked) return; // Don't update if locked
+        function updateUI(rawHeading) {
+            if (isLocked) return;
 
-            // Apply calibration
+            // 1. Calculate Calibrated Heading
             let finalHeading = (rawHeading + calibrationOffset) % 360;
             if (finalHeading < 0) finalHeading += 360;
 
+            // 2. Update Compass Text
             headingDisplay.innerText = Math.round(finalHeading) + "°";
 
-            // Visual Transform
-            // 40px per 5 deg = 8px per deg
+            // 3. Update Compass Tape
             const pxPerDeg = 8;
             const centerOffset = window.innerWidth / 2;
             let x = -((finalHeading) * pxPerDeg) + centerOffset - 20; 
             tape.style.transform = `translateX(${x}px)`;
+
+            // 4. Update Map Line (if we have GPS)
+            if (currentLat !== null && currentLng !== null) {
+                const dest = getDestinationPoint(currentLat, currentLng, finalHeading, 5000); // 5000 miles
+                // Draw line from User -> Destination
+                headingLine.setLatLngs([
+                    [currentLat, currentLng],
+                    dest
+                ]);
+            }
         }
 
         function handleOrientation(e) {
@@ -342,46 +382,37 @@
             if (e.webkitCompassHeading) heading = e.webkitCompassHeading;
             else if (e.alpha !== null) heading = 360 - e.alpha; 
             
-            // Normalize
             heading = heading % 360;
             if(heading < 0) heading += 360;
 
             currentHeading = heading;
-            updateCompassUI(currentHeading);
+            updateUI(currentHeading);
         }
 
-        // --- CALIBRATION SWIPE HANDLERS (On Compass Container) ---
+        // --- CALIBRATION SWIPE ---
         const compassContainer = document.getElementById('compass-container');
         let startX = 0;
         let startOffset = 0;
 
         compassContainer.addEventListener('touchstart', (e) => {
-            if (isLocked) return; // Disable calibration while locked
+            if (isLocked) return;
             startX = e.touches[0].clientX;
             startOffset = calibrationOffset;
         }, {passive: false});
 
         compassContainer.addEventListener('touchmove', (e) => {
             if (isLocked) return;
-            // Prevent browser back/forward gestures
             e.preventDefault(); 
-            
             const currentX = e.touches[0].clientX;
             const deltaPx = currentX - startX;
-            
-            // 8 pixels = 1 degree. 
-            // Dragging right (positive delta) should pull the tape right.
-            // Since tape moves left as degrees increase, dragging right means DECREASING degrees.
-            const deltaDeg = -(deltaPx / 8);
-            
+            const deltaDeg = -(deltaPx / 8); // 8px = 1deg
             calibrationOffset = startOffset + deltaDeg;
             
-            // Force immediate update
-            updateCompassUI(currentHeading);
+            updateUI(currentHeading);
         }, {passive: false});
 
 
-        // --- 5. LOCK BUTTON LOGIC ---
+        // --- 6. LOCK BUTTON ---
         const lockBtn = document.getElementById('lock-btn');
         const iconUnlocked = document.getElementById('icon-unlocked');
         const iconLocked = document.getElementById('icon-locked');
@@ -390,42 +421,48 @@
             isLocked = !isLocked;
 
             if (isLocked) {
-                // Locked State
                 lockBtn.classList.add('active');
                 iconUnlocked.style.display = 'none';
                 iconLocked.style.display = 'block';
-                headingDisplay.style.color = '#ff3b30'; // Red text when locked
+                headingDisplay.style.color = '#ff3b30';
             } else {
-                // Unlocked State
                 lockBtn.classList.remove('active');
                 iconUnlocked.style.display = 'block';
                 iconLocked.style.display = 'none';
-                headingDisplay.style.color = '#00ffcc'; // Back to Cyan
-                // Resume updating immediately
-                updateCompassUI(currentHeading);
+                headingDisplay.style.color = '#00ffcc';
+                updateUI(currentHeading);
             }
         };
 
-        // --- 6. GPS LOGIC ---
+        // --- 7. GPS LOGIC ---
         function updateGPS(pos) {
             const lat = pos.coords.latitude;
             const lng = pos.coords.longitude;
             const acc = pos.coords.accuracy;
             const spd = pos.coords.speed; 
+            
+            // Store globally
+            currentLat = lat;
+            currentLng = lng;
 
+            // UI Data
             document.getElementById('val-lat').innerText = lat.toFixed(5);
             document.getElementById('val-lon').innerText = lng.toFixed(5);
             document.getElementById('val-acc').innerText = Math.round(acc) + "m";
             const kmh = spd ? (spd * 3.6).toFixed(1) : 0;
             document.getElementById('val-spd').innerText = kmh + " km/h";
 
+            // Map Markers
             const newLatLng = new L.LatLng(lat, lng);
             userDot.setLatLng(newLatLng);
             accCircle.setLatLng(newLatLng);
             accCircle.setRadius(acc);
 
+            // Trigger line update to snap start point to new location
+            updateUI(currentHeading);
+
             if (firstFix) {
-                map.setView(newLatLng, 18);
+                map.setView(newLatLng, 13); // Zoom out a bit to see the line better
                 firstFix = false;
             }
         }
@@ -436,7 +473,7 @@
             });
         }
 
-        // --- 7. PERMISSIONS ---
+        // --- 8. PERMISSIONS ---
         const btn = document.getElementById('ios-btn');
         if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
             btn.style.display = 'block';
