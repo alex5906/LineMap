@@ -131,10 +131,10 @@
             background: #222;
         }
 
-        /* --- LOCK BUTTON (Moved to Top Right) --- */
+        /* Lock Button (Top Right) */
         #lock-btn {
             position: absolute;
-            top: 20px;   /* Changed from bottom */
+            top: 20px;
             right: 20px;
             width: 50px;
             height: 50px;
@@ -170,7 +170,7 @@
             fill: #ff3b30;
         }
 
-        /* --- STATUS BUBBLE --- */
+        /* Status Bubble (Center) */
         #status-msg {
             position: absolute;
             top: 50%;
@@ -183,7 +183,7 @@
             font-size: 0.9rem;
             font-weight: bold;
             text-align: center;
-            z-index: 2000; /* Above everything on map */
+            z-index: 2000;
             border: 1px solid #444;
             box-shadow: 0 4px 15px rgba(0,0,0,0.5);
             display: flex;
@@ -191,7 +191,6 @@
             gap: 10px;
         }
 
-        /* Simple loading spinner for status */
         .spinner {
             width: 12px;
             height: 12px;
@@ -241,7 +240,7 @@
         #ios-btn {
             position: absolute;
             z-index: 9999;
-            top: 60%; /* Moved down slightly to avoid covering status */
+            top: 60%; 
             left: 50%;
             transform: translate(-50%, -50%);
             padding: 15px 30px;
@@ -339,37 +338,42 @@
             stroke: false
         }).addTo(map);
 
-        // Heading Line
         const headingLine = L.polyline([], {
-            color: '#ff3b30', // Red
+            color: '#ff3b30', 
             weight: 3,
             opacity: 0.8
         }).addTo(map);
 
         let firstFix = true;
 
-        // --- 3. MATH HELPERS (Rhumb Line Logic) ---
-        function getRhumbLineDestination(lat1, lon1, brng, distMiles) {
-            const R = 3958.8; // Earth Radius in Miles
-            const d = distMiles / R; 
+        // --- 3. MATH HELPERS (GEODESIC CURVE) ---
+        function toRad(deg) { return deg * Math.PI / 180; }
+        function toDeg(rad) { return rad * 180 / Math.PI; }
 
-            const lat1Rad = lat1 * Math.PI / 180;
-            const lon1Rad = lon1 * Math.PI / 180;
-            const brngRad = brng * Math.PI / 180;
+        // Generates a path that follows the Earth's curvature (Great Circle)
+        function calculateGeodesicPath(startLat, startLng, bearingDeg, distanceMiles, steps = 100) {
+            const R = 3958.8; // Earth Radius (miles)
+            const startLatRad = toRad(startLat);
+            const startLngRad = toRad(startLng);
+            const bearingRad = toRad(bearingDeg);
+            
+            const path = [];
+            
+            for (let i = 0; i <= steps; i++) {
+                // Current distance along the line
+                const dist = (distanceMiles * (i / steps));
+                const angularDist = dist / R;
 
-            let lat2Rad = lat1Rad + d * Math.cos(brngRad);
-
-            const dPhi = Math.log(Math.tan(Math.PI / 4 + lat2Rad / 2) / Math.tan(Math.PI / 4 + lat1Rad / 2));
-            const dLat = lat2Rad - lat1Rad;
-            let q = Math.cos(lat1Rad);
-            if (Math.abs(dPhi) > 1e-10) {
-                q = dLat / dPhi;
+                // Haversine Destination Formula
+                const latRad = Math.asin(Math.sin(startLatRad) * Math.cos(angularDist) + 
+                                         Math.cos(startLatRad) * Math.sin(angularDist) * Math.cos(bearingRad));
+                
+                const lngRad = startLngRad + Math.atan2(Math.sin(bearingRad) * Math.sin(angularDist) * Math.cos(startLatRad),
+                                                        Math.cos(angularDist) - Math.sin(startLatRad) * Math.sin(latRad));
+                
+                path.push([toDeg(latRad), toDeg(lngRad)]);
             }
-
-            const dLon = d * Math.sin(brngRad) / q;
-            let lon2Rad = lon1Rad + dLon;
-
-            return [lat2Rad * 180 / Math.PI, lon2Rad * 180 / Math.PI];
+            return path;
         }
 
         // --- 4. COMPASS TAPE SETUP ---
@@ -410,13 +414,11 @@
             
             tape.style.transform = `translateX(${x}px)`;
 
-            // Line Update
+            // Line Update (Curved Geodesic)
             if (currentLat !== null && currentLng !== null) {
-                const dest = getRhumbLineDestination(currentLat, currentLng, finalHeading, 5000);
-                headingLine.setLatLngs([
-                    [currentLat, currentLng],
-                    dest
-                ]);
+                // Calculate 100 points along the Great Circle path
+                const pathPoints = calculateGeodesicPath(currentLat, currentLng, finalHeading, 5000);
+                headingLine.setLatLngs(pathPoints);
             }
         }
 
@@ -479,7 +481,6 @@
         const statusMsg = document.getElementById('status-msg');
 
         function updateGPS(pos) {
-            // Hide Status on first fix
             if (statusMsg.style.display !== 'none') {
                 statusMsg.style.display = 'none';
             }
