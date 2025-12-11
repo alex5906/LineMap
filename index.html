@@ -12,28 +12,26 @@
         body {
             margin: 0;
             padding: 0;
-            height: 100vh; /* Fallback */
-            height: 100dvh; /* Dynamic Viewport Height for mobile browsers */
+            height: 100vh;
+            height: 100dvh;
             display: flex;
             flex-direction: column;
-            background-color: #1a1a1a; /* Match header color */
+            background-color: #1a1a1a;
             font-family: 'Courier New', Courier, monospace;
             color: white;
             overflow: hidden;
+            user-select: none; /* Prevent text selection */
         }
 
         /* --- 1. TOP COMPASS SECTION --- */
-        /* This container handles the background and the notch padding */
         #compass-container {
             background-color: #1a1a1a;
             border-bottom: 2px solid #333;
             flex-shrink: 0;
-            
-            /* CRITICAL FIX: Pushes content down below the status bar/notch */
             padding-top: env(safe-area-inset-top); 
+            cursor: ew-resize; /* Indicates swipable */
         }
 
-        /* This inner wrapper holds the actual UI elements */
         #compass-content {
             position: relative;
             height: 100px;
@@ -50,15 +48,16 @@
             color: #00ffcc;
             font-weight: bold;
             z-index: 25;
-            background-color: rgba(26, 26, 26, 0.9); /* Slightly opaque to read over lines */
+            background-color: rgba(26, 26, 26, 0.9);
             padding: 2px 10px;
             border-radius: 5px;
+            pointer-events: none; /* Let swipes pass through */
         }
 
         #indicator {
             position: absolute;
             left: 50%;
-            top: 35px; /* Moved down slightly */
+            top: 35px;
             bottom: 0;
             width: 4px;
             background-color: #ff3b30;
@@ -66,6 +65,7 @@
             z-index: 20;
             box-shadow: 0 0 8px rgba(255, 59, 48, 0.8);
             border-radius: 2px;
+            pointer-events: none;
         }
 
         #compass-tape {
@@ -79,7 +79,7 @@
         }
 
         .tick {
-            width: 40px; /* 8px per degree */
+            width: 40px; 
             height: 100%;
             display: flex;
             flex-direction: column;
@@ -88,7 +88,6 @@
             position: relative;
         }
 
-        /* Tick Lines */
         .tick::before {
             content: '';
             width: 1px;
@@ -102,7 +101,6 @@
             background-color: white;
         }
 
-        /* Tick Labels */
         .tick span {
             margin-top: 6px;
             font-size: 14px;
@@ -118,18 +116,62 @@
         }
 
         /* --- 2. MIDDLE MAP SECTION --- */
-        #map {
+        #map-wrapper {
+            position: relative;
             flex-grow: 1;
             width: 100%;
             z-index: 1;
-            background: #222; /* Dark placeholder while loading */
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+            background: #222;
+        }
+
+        /* --- LOCK BUTTON --- */
+        #lock-btn {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            background-color: rgba(0, 0, 0, 0.8);
+            border-radius: 50%;
+            z-index: 1000; /* Above map */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            border: 2px solid #444;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            transition: all 0.2s ease;
+        }
+
+        #lock-btn:active {
+            transform: scale(0.95);
+            background-color: #000;
+        }
+
+        #lock-btn svg {
+            width: 24px;
+            height: 24px;
+            fill: white;
+        }
+
+        #lock-btn.active {
+            border-color: #ff3b30;
+            box-shadow: 0 0 10px rgba(255, 59, 48, 0.4);
+        }
+
+        #lock-btn.active svg {
+            fill: #ff3b30;
         }
 
         /* --- 3. BOTTOM DATA SECTION --- */
         #gps-data {
             background-color: #1a1a1a;
             border-top: 2px solid #333;
-            /* Add padding for the bottom safe area (home bar on iPhones) */
             padding: 15px 15px calc(15px + env(safe-area-inset-bottom)) 15px;
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -158,7 +200,6 @@
             font-weight: bold;
         }
 
-        /* --- IOS BUTTON --- */
         #ios-btn {
             position: absolute;
             z-index: 9999;
@@ -187,7 +228,18 @@
         </div>
     </div>
 
-    <div id="map"></div>
+    <div id="map-wrapper">
+        <div id="map"></div>
+        
+        <div id="lock-btn" onclick="toggleLock()">
+            <svg id="icon-unlocked" viewBox="0 0 24 24">
+                <path d="M12 17c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm6-9h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6h1.9c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm0 12H6V10h12v10z"/>
+            </svg>
+            <svg id="icon-locked" viewBox="0 0 24 24" style="display:none">
+                <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2-2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>
+            </svg>
+        </div>
+    </div>
 
     <div id="gps-data">
         <div class="data-item">
@@ -213,17 +265,19 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <script>
-        // --- 1. SETUP MAP ---
+        // --- 1. CONFIG & STATE ---
+        let currentHeading = 0; // The raw sensor heading
+        let calibrationOffset = 0; // Offset from swiping
+        let isLocked = false; // Is the compass frozen?
+        
+        // --- 2. MAP SETUP ---
         const map = L.map('map', { 
-            zoomControl: false, // Hide zoom buttons for cleaner HUD
+            zoomControl: false, 
             attributionControl: false 
         }).setView([0, 0], 2);
 
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19
-        }).addTo(map);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
 
-        // Custom Blue Dot Marker
         const userDot = L.circleMarker([0, 0], {
             radius: 8,
             fillColor: "#007AFF",
@@ -233,7 +287,6 @@
             fillOpacity: 1
         }).addTo(map);
 
-        // Accuracy Circle
         const accCircle = L.circle([0, 0], {
             radius: 0,
             fillColor: "#007AFF",
@@ -243,7 +296,7 @@
 
         let firstFix = true;
 
-        // --- 2. GENERATE COMPASS TAPE ---
+        // --- 3. COMPASS TAPE SETUP ---
         const tape = document.getElementById('compass-tape');
         const headingDisplay = document.getElementById('heading-text');
         
@@ -252,7 +305,6 @@
             let deg = i % 360;
             let display = '';
             let classes = 'tick';
-
             if (deg === 0) { display = 'N'; classes += ' major cardinal'; }
             else if (deg === 45) { display = 'NE'; classes += ' major'; }
             else if (deg === 90) { display = 'E'; classes += ' major cardinal'; }
@@ -262,52 +314,111 @@
             else if (deg === 270) { display = 'W'; classes += ' major cardinal'; }
             else if (deg === 315) { display = 'NW'; classes += ' major'; }
             else if (deg % 15 === 0) { display = deg; classes += ' major'; }
-            
             tapeHtml += `<div class="${classes}"><span>${display}</span></div>`;
         }
         tape.innerHTML = tapeHtml;
 
-        // --- 3. SENSOR LOGIC ---
-        function handleOrientation(e) {
-            let heading = 0;
-            
-            if (e.webkitCompassHeading) {
-                heading = e.webkitCompassHeading;
-            } else if (e.alpha !== null) {
-                heading = 360 - e.alpha; 
-            }
-            
-            heading = heading % 360;
-            if(heading < 0) heading += 360;
+        // --- 4. COMPASS & CALIBRATION LOGIC ---
+        
+        function updateCompassUI(rawHeading) {
+            if (isLocked) return; // Don't update if locked
 
-            headingDisplay.innerText = Math.round(heading) + "°";
+            // Apply calibration
+            let finalHeading = (rawHeading + calibrationOffset) % 360;
+            if (finalHeading < 0) finalHeading += 360;
 
-            // 1 tick = 40px width = 5 degrees. Ratio = 8px per degree.
+            headingDisplay.innerText = Math.round(finalHeading) + "°";
+
+            // Visual Transform
+            // 40px per 5 deg = 8px per deg
             const pxPerDeg = 8;
             const centerOffset = window.innerWidth / 2;
-            
-            // Offset logic to center current heading
-            let x = -((heading) * pxPerDeg) + centerOffset - 20; // -20 centers the 40px div
-            
+            let x = -((finalHeading) * pxPerDeg) + centerOffset - 20; 
             tape.style.transform = `translateX(${x}px)`;
         }
 
-        // --- 4. GPS LOGIC ---
+        function handleOrientation(e) {
+            let heading = 0;
+            if (e.webkitCompassHeading) heading = e.webkitCompassHeading;
+            else if (e.alpha !== null) heading = 360 - e.alpha; 
+            
+            // Normalize
+            heading = heading % 360;
+            if(heading < 0) heading += 360;
+
+            currentHeading = heading;
+            updateCompassUI(currentHeading);
+        }
+
+        // --- CALIBRATION SWIPE HANDLERS (On Compass Container) ---
+        const compassContainer = document.getElementById('compass-container');
+        let startX = 0;
+        let startOffset = 0;
+
+        compassContainer.addEventListener('touchstart', (e) => {
+            if (isLocked) return; // Disable calibration while locked
+            startX = e.touches[0].clientX;
+            startOffset = calibrationOffset;
+        }, {passive: false});
+
+        compassContainer.addEventListener('touchmove', (e) => {
+            if (isLocked) return;
+            // Prevent browser back/forward gestures
+            e.preventDefault(); 
+            
+            const currentX = e.touches[0].clientX;
+            const deltaPx = currentX - startX;
+            
+            // 8 pixels = 1 degree. 
+            // Dragging right (positive delta) should pull the tape right.
+            // Since tape moves left as degrees increase, dragging right means DECREASING degrees.
+            const deltaDeg = -(deltaPx / 8);
+            
+            calibrationOffset = startOffset + deltaDeg;
+            
+            // Force immediate update
+            updateCompassUI(currentHeading);
+        }, {passive: false});
+
+
+        // --- 5. LOCK BUTTON LOGIC ---
+        const lockBtn = document.getElementById('lock-btn');
+        const iconUnlocked = document.getElementById('icon-unlocked');
+        const iconLocked = document.getElementById('icon-locked');
+
+        window.toggleLock = function() {
+            isLocked = !isLocked;
+
+            if (isLocked) {
+                // Locked State
+                lockBtn.classList.add('active');
+                iconUnlocked.style.display = 'none';
+                iconLocked.style.display = 'block';
+                headingDisplay.style.color = '#ff3b30'; // Red text when locked
+            } else {
+                // Unlocked State
+                lockBtn.classList.remove('active');
+                iconUnlocked.style.display = 'block';
+                iconLocked.style.display = 'none';
+                headingDisplay.style.color = '#00ffcc'; // Back to Cyan
+                // Resume updating immediately
+                updateCompassUI(currentHeading);
+            }
+        };
+
+        // --- 6. GPS LOGIC ---
         function updateGPS(pos) {
             const lat = pos.coords.latitude;
             const lng = pos.coords.longitude;
             const acc = pos.coords.accuracy;
             const spd = pos.coords.speed; 
 
-            // Update UI
             document.getElementById('val-lat').innerText = lat.toFixed(5);
             document.getElementById('val-lon').innerText = lng.toFixed(5);
             document.getElementById('val-acc').innerText = Math.round(acc) + "m";
-            
             const kmh = spd ? (spd * 3.6).toFixed(1) : 0;
             document.getElementById('val-spd').innerText = kmh + " km/h";
 
-            // Update Map
             const newLatLng = new L.LatLng(lat, lng);
             userDot.setLatLng(newLatLng);
             accCircle.setLatLng(newLatLng);
@@ -320,26 +431,22 @@
         }
 
         if (navigator.geolocation) {
-            navigator.geolocation.watchPosition(updateGPS, 
-                (err) => console.warn("GPS Error", err), 
-                { enableHighAccuracy: true, maximumAge: 0 }
-            );
+            navigator.geolocation.watchPosition(updateGPS, (err) => console.warn(err), { 
+                enableHighAccuracy: true, maximumAge: 0 
+            });
         }
 
-        // --- 5. PERMISSIONS ---
+        // --- 7. PERMISSIONS ---
         const btn = document.getElementById('ios-btn');
         if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
             btn.style.display = 'block';
             btn.addEventListener('click', () => {
-                DeviceOrientationEvent.requestPermission()
-                    .then(resp => {
-                        if (resp === 'granted') {
-                            window.addEventListener('deviceorientation', handleOrientation, true);
-                            btn.style.display = 'none';
-                        } else {
-                            alert("Compass permission denied");
-                        }
-                    });
+                DeviceOrientationEvent.requestPermission().then(resp => {
+                    if (resp === 'granted') {
+                        window.addEventListener('deviceorientation', handleOrientation, true);
+                        btn.style.display = 'none';
+                    } else alert("Denied");
+                });
             });
         } else {
             window.addEventListener('deviceorientation', handleOrientation, true);
