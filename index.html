@@ -73,18 +73,15 @@
             top: 45px;
             display: flex;
             will-change: transform;
-            /* FIX: Allow width to be as wide as needed, don't hardcode 5000px */
             width: max-content; 
             height: 55px;
             align-items: flex-start;
         }
 
         .tick {
-            /* FIX: Strict width enforcement */
             width: 40px; 
             min-width: 40px;
             flex-shrink: 0; 
-            
             height: 100%;
             display: flex;
             flex-direction: column;
@@ -134,10 +131,10 @@
             background: #222;
         }
 
-        /* --- LOCK BUTTON --- */
+        /* --- LOCK BUTTON (Moved to Top Right) --- */
         #lock-btn {
             position: absolute;
-            bottom: 20px;
+            top: 20px;   /* Changed from bottom */
             right: 20px;
             width: 50px;
             height: 50px;
@@ -171,6 +168,42 @@
 
         #lock-btn.active svg {
             fill: #ff3b30;
+        }
+
+        /* --- STATUS BUBBLE --- */
+        #status-msg {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.85);
+            color: #fff;
+            padding: 15px 25px;
+            border-radius: 30px;
+            font-size: 0.9rem;
+            font-weight: bold;
+            text-align: center;
+            z-index: 2000; /* Above everything on map */
+            border: 1px solid #444;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        /* Simple loading spinner for status */
+        .spinner {
+            width: 12px;
+            height: 12px;
+            border: 2px solid #fff;
+            border-top: 2px solid transparent;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
 
         /* --- 3. BOTTOM DATA SECTION --- */
@@ -208,7 +241,7 @@
         #ios-btn {
             position: absolute;
             z-index: 9999;
-            top: 50%;
+            top: 60%; /* Moved down slightly to avoid covering status */
             left: 50%;
             transform: translate(-50%, -50%);
             padding: 15px 30px;
@@ -236,6 +269,11 @@
     <div id="map-wrapper">
         <div id="map"></div>
         
+        <div id="status-msg">
+            <div class="spinner"></div>
+            <span>Waiting for GPS Signal...</span>
+        </div>
+
         <div id="lock-btn" onclick="toggleLock()">
             <svg id="icon-unlocked" viewBox="0 0 24 24">
                 <path d="M12 17c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm6-9h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6h1.9c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm0 12H6V10h12v10z"/>
@@ -338,9 +376,6 @@
         const tape = document.getElementById('compass-tape');
         const headingDisplay = document.getElementById('heading-text');
         
-        // We generate ticks for 0 to 720 degrees
-        // 720 degrees / 5 degrees per tick = 144 ticks
-        // 144 ticks * 40px width = 5760px total width
         let tapeHtml = '';
         for (let i = 0; i < 720; i += 5) {
             let deg = i % 360;
@@ -369,14 +404,8 @@
             headingDisplay.innerText = Math.round(finalHeading) + "°";
 
             // Visual Transform
-            // Each tick is 40px wide and represents 5 degrees.
-            // Therefore 1 degree = 8px.
-            // Center of screen (indicator) needs to align with: (Heading * 8px)
             const pxPerDeg = 8;
             const centerOffset = window.innerWidth / 2;
-            
-            // We shift the tape to the left (-). 
-            // We subtract 20px because the tick label is centered in the 40px box.
             let x = -((finalHeading) * pxPerDeg) + centerOffset - 20; 
             
             tape.style.transform = `translateX(${x}px)`;
@@ -447,7 +476,14 @@
         };
 
         // --- 7. GPS LOGIC ---
+        const statusMsg = document.getElementById('status-msg');
+
         function updateGPS(pos) {
+            // Hide Status on first fix
+            if (statusMsg.style.display !== 'none') {
+                statusMsg.style.display = 'none';
+            }
+
             const lat = pos.coords.latitude;
             const lng = pos.coords.longitude;
             const acc = pos.coords.accuracy;
@@ -475,10 +511,18 @@
             }
         }
 
+        function gpsError(err) {
+            console.warn(err);
+            statusMsg.style.display = 'flex';
+            statusMsg.querySelector('span').innerText = "GPS Error: " + err.message;
+        }
+
         if (navigator.geolocation) {
-            navigator.geolocation.watchPosition(updateGPS, (err) => console.warn(err), { 
+            navigator.geolocation.watchPosition(updateGPS, gpsError, { 
                 enableHighAccuracy: true, maximumAge: 0 
             });
+        } else {
+            statusMsg.querySelector('span').innerText = "GPS Not Supported";
         }
 
         // --- 8. PERMISSIONS ---
