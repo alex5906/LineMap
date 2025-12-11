@@ -73,13 +73,18 @@
             top: 45px;
             display: flex;
             will-change: transform;
-            width: 5000px; 
+            /* FIX: Allow width to be as wide as needed, don't hardcode 5000px */
+            width: max-content; 
             height: 55px;
             align-items: flex-start;
         }
 
         .tick {
+            /* FIX: Strict width enforcement */
             width: 40px; 
+            min-width: 40px;
+            flex-shrink: 0; 
+            
             height: 100%;
             display: flex;
             flex-direction: column;
@@ -306,32 +311,23 @@
         let firstFix = true;
 
         // --- 3. MATH HELPERS (Rhumb Line Logic) ---
-        // This ensures the line is visually straight on a Mercator map (Constant Bearing)
         function getRhumbLineDestination(lat1, lon1, brng, distMiles) {
             const R = 3958.8; // Earth Radius in Miles
-            const d = distMiles / R; // Angular distance
+            const d = distMiles / R; 
 
             const lat1Rad = lat1 * Math.PI / 180;
             const lon1Rad = lon1 * Math.PI / 180;
             const brngRad = brng * Math.PI / 180;
 
-            // 1. Calculate New Latitude
             let lat2Rad = lat1Rad + d * Math.cos(brngRad);
 
-            // 2. Calculate projected latitude difference (Mercator scale factor)
-            // This corrects the longitude calc to ensure line is straight on map
             const dPhi = Math.log(Math.tan(Math.PI / 4 + lat2Rad / 2) / Math.tan(Math.PI / 4 + lat1Rad / 2));
-
-            // 3. Calculate q (scaling factor for longitude)
-            // q = dLat / dPhi
-            // Handle E/W special case where dPhi is 0
             const dLat = lat2Rad - lat1Rad;
             let q = Math.cos(lat1Rad);
             if (Math.abs(dPhi) > 1e-10) {
                 q = dLat / dPhi;
             }
 
-            // 4. Calculate New Longitude
             const dLon = d * Math.sin(brngRad) / q;
             let lon2Rad = lon1Rad + dLon;
 
@@ -342,6 +338,9 @@
         const tape = document.getElementById('compass-tape');
         const headingDisplay = document.getElementById('heading-text');
         
+        // We generate ticks for 0 to 720 degrees
+        // 720 degrees / 5 degrees per tick = 144 ticks
+        // 144 ticks * 40px width = 5760px total width
         let tapeHtml = '';
         for (let i = 0; i < 720; i += 5) {
             let deg = i % 360;
@@ -364,20 +363,25 @@
         function updateUI(rawHeading) {
             if (isLocked) return;
 
-            // 1. Calculate Heading
             let finalHeading = (rawHeading + calibrationOffset) % 360;
             if (finalHeading < 0) finalHeading += 360;
 
-            // 2. Text
             headingDisplay.innerText = Math.round(finalHeading) + "°";
 
-            // 3. Tape
+            // Visual Transform
+            // Each tick is 40px wide and represents 5 degrees.
+            // Therefore 1 degree = 8px.
+            // Center of screen (indicator) needs to align with: (Heading * 8px)
             const pxPerDeg = 8;
             const centerOffset = window.innerWidth / 2;
+            
+            // We shift the tape to the left (-). 
+            // We subtract 20px because the tick label is centered in the 40px box.
             let x = -((finalHeading) * pxPerDeg) + centerOffset - 20; 
+            
             tape.style.transform = `translateX(${x}px)`;
 
-            // 4. Line Update (Rhumb Line)
+            // Line Update
             if (currentLat !== null && currentLng !== null) {
                 const dest = getRhumbLineDestination(currentLat, currentLng, finalHeading, 5000);
                 headingLine.setLatLngs([
@@ -463,7 +467,6 @@
             accCircle.setLatLng(newLatLng);
             accCircle.setRadius(acc);
 
-            // Update line origin
             updateUI(currentHeading);
 
             if (firstFix) {
