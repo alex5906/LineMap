@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>GPS HUD Map</title>
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -12,62 +12,74 @@
         body {
             margin: 0;
             padding: 0;
-            height: 100vh;
+            height: 100vh; /* Fallback */
+            height: 100dvh; /* Dynamic Viewport Height for mobile browsers */
             display: flex;
             flex-direction: column;
-            background-color: #121212;
-            font-family: 'Courier New', Courier, monospace; /* Monospace for HUD look */
+            background-color: #1a1a1a; /* Match header color */
+            font-family: 'Courier New', Courier, monospace;
             color: white;
             overflow: hidden;
         }
 
         /* --- 1. TOP COMPASS SECTION --- */
+        /* This container handles the background and the notch padding */
         #compass-container {
-            height: 100px;
             background-color: #1a1a1a;
-            position: relative;
             border-bottom: 2px solid #333;
+            flex-shrink: 0;
+            
+            /* CRITICAL FIX: Pushes content down below the status bar/notch */
+            padding-top: env(safe-area-inset-top); 
+        }
+
+        /* This inner wrapper holds the actual UI elements */
+        #compass-content {
+            position: relative;
+            height: 100px;
+            width: 100%;
             overflow: hidden;
-            flex-shrink: 0; /* Don't shrink */
         }
 
         #heading-text {
             position: absolute;
-            top: 5px;
+            top: 10px;
             left: 50%;
             transform: translateX(-50%);
-            font-size: 1.2rem;
+            font-size: 1.5rem;
             color: #00ffcc;
             font-weight: bold;
             z-index: 25;
-            background-color: rgba(26, 26, 26, 0.8);
-            padding: 0 10px;
+            background-color: rgba(26, 26, 26, 0.9); /* Slightly opaque to read over lines */
+            padding: 2px 10px;
+            border-radius: 5px;
         }
 
         #indicator {
             position: absolute;
             left: 50%;
-            top: 25px;
+            top: 35px; /* Moved down slightly */
             bottom: 0;
-            width: 3px;
+            width: 4px;
             background-color: #ff3b30;
             transform: translateX(-50%);
             z-index: 20;
-            box-shadow: 0 0 8px rgba(255, 59, 48, 0.6);
+            box-shadow: 0 0 8px rgba(255, 59, 48, 0.8);
+            border-radius: 2px;
         }
 
         #compass-tape {
             position: absolute;
-            top: 40px;
+            top: 45px;
             display: flex;
             will-change: transform;
-            /* Large width for sliding */
             width: 5000px; 
-            height: 60px;
+            height: 55px;
+            align-items: flex-start;
         }
 
         .tick {
-            width: 40px; /* 1 tick = 5 degrees (8px per degree) */
+            width: 40px; /* 8px per degree */
             height: 100%;
             display: flex;
             flex-direction: column;
@@ -76,21 +88,23 @@
             position: relative;
         }
 
+        /* Tick Lines */
         .tick::before {
             content: '';
             width: 1px;
             height: 10px;
-            background-color: #888;
+            background-color: #666;
         }
         
         .tick.major::before {
-            height: 15px;
+            height: 18px;
             width: 2px;
             background-color: white;
         }
 
+        /* Tick Labels */
         .tick span {
-            margin-top: 5px;
+            margin-top: 6px;
             font-size: 14px;
             color: #aaa;
         }
@@ -99,27 +113,31 @@
             font-size: 20px;
             color: #00ffcc;
             font-weight: bold;
-            margin-top: 2px;
+            margin-top: 4px;
+            text-shadow: 0 0 5px rgba(0, 255, 204, 0.5);
         }
 
         /* --- 2. MIDDLE MAP SECTION --- */
         #map {
-            flex-grow: 1; /* Fills remaining space */
+            flex-grow: 1;
             width: 100%;
             z-index: 1;
+            background: #222; /* Dark placeholder while loading */
         }
 
         /* --- 3. BOTTOM DATA SECTION --- */
         #gps-data {
             background-color: #1a1a1a;
             border-top: 2px solid #333;
-            padding: 15px;
+            /* Add padding for the bottom safe area (home bar on iPhones) */
+            padding: 15px 15px calc(15px + env(safe-area-inset-bottom)) 15px;
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 10px;
             font-size: 0.9rem;
             flex-shrink: 0;
-            box-shadow: 0 -4px 10px rgba(0,0,0,0.5);
+            box-shadow: 0 -4px 15px rgba(0,0,0,0.6);
+            z-index: 30;
         }
 
         .data-item {
@@ -131,47 +149,53 @@
             font-size: 0.7rem;
             color: #888;
             text-transform: uppercase;
+            letter-spacing: 1px;
         }
 
         .value {
             font-size: 1.1rem;
             color: #fff;
+            font-weight: bold;
         }
 
-        /* --- UTILS --- */
+        /* --- IOS BUTTON --- */
         #ios-btn {
             position: absolute;
             z-index: 9999;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            padding: 15px 25px;
+            padding: 15px 30px;
             background: #007aff;
             color: white;
             border: none;
-            border-radius: 8px;
+            border-radius: 30px;
             font-size: 16px;
+            font-weight: bold;
             display: none;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
         }
     </style>
 </head>
 <body>
 
     <div id="compass-container">
-        <div id="heading-text">--°</div>
-        <div id="indicator"></div>
-        <div id="compass-tape"></div>
+        <div id="compass-content">
+            <div id="heading-text">--°</div>
+            <div id="indicator"></div>
+            <div id="compass-tape"></div>
+        </div>
     </div>
 
     <div id="map"></div>
 
     <div id="gps-data">
         <div class="data-item">
-            <span class="label">Latitude</span>
+            <span class="label">Lat</span>
             <span class="value" id="val-lat">--</span>
         </div>
         <div class="data-item">
-            <span class="label">Longitude</span>
+            <span class="label">Lon</span>
             <span class="value" id="val-lon">--</span>
         </div>
         <div class="data-item">
@@ -184,15 +208,18 @@
         </div>
     </div>
 
-    <button id="ios-btn">Enable Sensors</button>
+    <button id="ios-btn">Tap to Enable Compass</button>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <script>
         // --- 1. SETUP MAP ---
-        const map = L.map('map', { zoomControl: false }).setView([0, 0], 2);
+        const map = L.map('map', { 
+            zoomControl: false, // Hide zoom buttons for cleaner HUD
+            attributionControl: false 
+        }).setView([0, 0], 2);
+
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; OpenStreetMap',
             maxZoom: 19
         }).addTo(map);
 
@@ -201,16 +228,16 @@
             radius: 8,
             fillColor: "#007AFF",
             color: "#fff",
-            weight: 2,
+            weight: 3,
             opacity: 1,
             fillOpacity: 1
         }).addTo(map);
 
-        // Accuracy Circle (shows transparent blue zone)
+        // Accuracy Circle
         const accCircle = L.circle([0, 0], {
             radius: 0,
             fillColor: "#007AFF",
-            fillOpacity: 0.1,
+            fillOpacity: 0.15,
             stroke: false
         }).addTo(map);
 
@@ -220,7 +247,6 @@
         const tape = document.getElementById('compass-tape');
         const headingDisplay = document.getElementById('heading-text');
         
-        // We render degrees 0 to 720 (double loop) to handle the wrap-around seamlessly
         let tapeHtml = '';
         for (let i = 0; i < 720; i += 5) {
             let deg = i % 360;
@@ -236,93 +262,72 @@
             else if (deg === 270) { display = 'W'; classes += ' major cardinal'; }
             else if (deg === 315) { display = 'NW'; classes += ' major'; }
             else if (deg % 15 === 0) { display = deg; classes += ' major'; }
-            else { display = ''; } // Minor ticks have no text
-
+            
             tapeHtml += `<div class="${classes}"><span>${display}</span></div>`;
         }
         tape.innerHTML = tapeHtml;
 
         // --- 3. SENSOR LOGIC ---
-        
-        // A. COMPASS (DeviceOrientation)
         function handleOrientation(e) {
             let heading = 0;
             
-            // iOS Webkit
             if (e.webkitCompassHeading) {
                 heading = e.webkitCompassHeading;
-            } 
-            // Android (Absolute)
-            else if (e.alpha !== null) {
+            } else if (e.alpha !== null) {
                 heading = 360 - e.alpha; 
             }
             
-            // Normalize
             heading = heading % 360;
             if(heading < 0) heading += 360;
 
-            // Update Text
             headingDisplay.innerText = Math.round(heading) + "°";
 
-            // Update Visual Tape
-            // 1 tick = 40px width = 5 degrees.
-            // Pixels per degree = 40 / 5 = 8px.
+            // 1 tick = 40px width = 5 degrees. Ratio = 8px per degree.
             const pxPerDeg = 8;
             const centerOffset = window.innerWidth / 2;
             
-            // Center the tape. We use the second loop (360+) to avoid jump at 0/360
-            // We shift left based on heading. -20 centers the specific tick div.
-            let x = -((heading) * pxPerDeg) + centerOffset - 20;
+            // Offset logic to center current heading
+            let x = -((heading) * pxPerDeg) + centerOffset - 20; // -20 centers the 40px div
             
             tape.style.transform = `translateX(${x}px)`;
         }
 
-        // B. GPS (Geolocation)
+        // --- 4. GPS LOGIC ---
         function updateGPS(pos) {
             const lat = pos.coords.latitude;
             const lng = pos.coords.longitude;
-            const acc = pos.coords.accuracy; // in meters
-            const spd = pos.coords.speed; // m/s
+            const acc = pos.coords.accuracy;
+            const spd = pos.coords.speed; 
 
-            // Update Data Panel
+            // Update UI
             document.getElementById('val-lat').innerText = lat.toFixed(5);
             document.getElementById('val-lon').innerText = lng.toFixed(5);
-            document.getElementById('val-acc').innerText = Math.round(acc) + " m";
+            document.getElementById('val-acc').innerText = Math.round(acc) + "m";
             
-            // Convert speed to km/h (if available, else 0)
             const kmh = spd ? (spd * 3.6).toFixed(1) : 0;
             document.getElementById('val-spd').innerText = kmh + " km/h";
 
-            // Update Map Markers
+            // Update Map
             const newLatLng = new L.LatLng(lat, lng);
             userDot.setLatLng(newLatLng);
             accCircle.setLatLng(newLatLng);
             accCircle.setRadius(acc);
 
-            // Zoom map to user on first successful find
             if (firstFix) {
                 map.setView(newLatLng, 18);
                 firstFix = false;
             }
         }
 
-        function gpsError(err) {
-            console.warn("GPS Error: " + err.message);
-        }
-
-        // Initialize GPS Watcher
         if (navigator.geolocation) {
-            navigator.geolocation.watchPosition(updateGPS, gpsError, {
-                enableHighAccuracy: true,
-                maximumAge: 0,
-                timeout: 5000
-            });
+            navigator.geolocation.watchPosition(updateGPS, 
+                (err) => console.warn("GPS Error", err), 
+                { enableHighAccuracy: true, maximumAge: 0 }
+            );
         }
 
-        // --- 4. PERMISSIONS (iOS 13+) ---
+        // --- 5. PERMISSIONS ---
         const btn = document.getElementById('ios-btn');
-        
-        // Detect if we need to ask permission for Compass
         if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
             btn.style.display = 'block';
             btn.addEventListener('click', () => {
@@ -334,11 +339,9 @@
                         } else {
                             alert("Compass permission denied");
                         }
-                    })
-                    .catch(console.error);
+                    });
             });
         } else {
-            // Android / Old iOS
             window.addEventListener('deviceorientation', handleOrientation, true);
         }
 
