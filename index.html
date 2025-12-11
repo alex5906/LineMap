@@ -296,34 +296,46 @@
             stroke: false
         }).addTo(map);
 
-        // THE HEADING LINE
+        // Heading Line
         const headingLine = L.polyline([], {
             color: '#ff3b30', // Red
             weight: 3,
-            opacity: 0.7
+            opacity: 0.8
         }).addTo(map);
 
         let firstFix = true;
 
-        // --- 3. GEOMETRY HELPERS ---
-        function toRad(deg) { return deg * Math.PI / 180; }
-        function toDeg(rad) { return rad * 180 / Math.PI; }
+        // --- 3. MATH HELPERS (Rhumb Line Logic) ---
+        // This ensures the line is visually straight on a Mercator map (Constant Bearing)
+        function getRhumbLineDestination(lat1, lon1, brng, distMiles) {
+            const R = 3958.8; // Earth Radius in Miles
+            const d = distMiles / R; // Angular distance
 
-        // Calculate destination point given distance and bearing
-        function getDestinationPoint(lat, lng, brngDeg, distMiles) {
-            const R = 3958.8; // Radius of Earth in miles
-            const distRatio = distMiles / R;
-            const brngRad = toRad(brngDeg);
-            const latRad = toRad(lat);
-            const lonRad = toRad(lng);
+            const lat1Rad = lat1 * Math.PI / 180;
+            const lon1Rad = lon1 * Math.PI / 180;
+            const brngRad = brng * Math.PI / 180;
 
-            const lat2Rad = Math.asin(Math.sin(latRad) * Math.cos(distRatio) +
-                                      Math.cos(latRad) * Math.sin(distRatio) * Math.cos(brngRad));
-            
-            const lon2Rad = lonRad + Math.atan2(Math.sin(brngRad) * Math.sin(distRatio) * Math.cos(latRad),
-                                                Math.cos(distRatio) - Math.sin(latRad) * Math.sin(lat2Rad));
-            
-            return [toDeg(lat2Rad), toDeg(lon2Rad)];
+            // 1. Calculate New Latitude
+            let lat2Rad = lat1Rad + d * Math.cos(brngRad);
+
+            // 2. Calculate projected latitude difference (Mercator scale factor)
+            // This corrects the longitude calc to ensure line is straight on map
+            const dPhi = Math.log(Math.tan(Math.PI / 4 + lat2Rad / 2) / Math.tan(Math.PI / 4 + lat1Rad / 2));
+
+            // 3. Calculate q (scaling factor for longitude)
+            // q = dLat / dPhi
+            // Handle E/W special case where dPhi is 0
+            const dLat = lat2Rad - lat1Rad;
+            let q = Math.cos(lat1Rad);
+            if (Math.abs(dPhi) > 1e-10) {
+                q = dLat / dPhi;
+            }
+
+            // 4. Calculate New Longitude
+            const dLon = d * Math.sin(brngRad) / q;
+            let lon2Rad = lon1Rad + dLon;
+
+            return [lat2Rad * 180 / Math.PI, lon2Rad * 180 / Math.PI];
         }
 
         // --- 4. COMPASS TAPE SETUP ---
@@ -348,28 +360,26 @@
         }
         tape.innerHTML = tapeHtml;
 
-        // --- 5. COMPASS & CALIBRATION LOGIC ---
-        
+        // --- 5. COMPASS LOGIC ---
         function updateUI(rawHeading) {
             if (isLocked) return;
 
-            // 1. Calculate Calibrated Heading
+            // 1. Calculate Heading
             let finalHeading = (rawHeading + calibrationOffset) % 360;
             if (finalHeading < 0) finalHeading += 360;
 
-            // 2. Update Compass Text
+            // 2. Text
             headingDisplay.innerText = Math.round(finalHeading) + "°";
 
-            // 3. Update Compass Tape
+            // 3. Tape
             const pxPerDeg = 8;
             const centerOffset = window.innerWidth / 2;
             let x = -((finalHeading) * pxPerDeg) + centerOffset - 20; 
             tape.style.transform = `translateX(${x}px)`;
 
-            // 4. Update Map Line (if we have GPS)
+            // 4. Line Update (Rhumb Line)
             if (currentLat !== null && currentLng !== null) {
-                const dest = getDestinationPoint(currentLat, currentLng, finalHeading, 5000); // 5000 miles
-                // Draw line from User -> Destination
+                const dest = getRhumbLineDestination(currentLat, currentLng, finalHeading, 5000);
                 headingLine.setLatLngs([
                     [currentLat, currentLng],
                     dest
@@ -389,7 +399,7 @@
             updateUI(currentHeading);
         }
 
-        // --- CALIBRATION SWIPE ---
+        // --- CALIBRATION ---
         const compassContainer = document.getElementById('compass-container');
         let startX = 0;
         let startOffset = 0;
@@ -405,12 +415,10 @@
             e.preventDefault(); 
             const currentX = e.touches[0].clientX;
             const deltaPx = currentX - startX;
-            const deltaDeg = -(deltaPx / 8); // 8px = 1deg
+            const deltaDeg = -(deltaPx / 8); 
             calibrationOffset = startOffset + deltaDeg;
-            
             updateUI(currentHeading);
         }, {passive: false});
-
 
         // --- 6. LOCK BUTTON ---
         const lockBtn = document.getElementById('lock-btn');
@@ -441,28 +449,25 @@
             const acc = pos.coords.accuracy;
             const spd = pos.coords.speed; 
             
-            // Store globally
             currentLat = lat;
             currentLng = lng;
 
-            // UI Data
             document.getElementById('val-lat').innerText = lat.toFixed(5);
             document.getElementById('val-lon').innerText = lng.toFixed(5);
             document.getElementById('val-acc').innerText = Math.round(acc) + "m";
             const kmh = spd ? (spd * 3.6).toFixed(1) : 0;
             document.getElementById('val-spd').innerText = kmh + " km/h";
 
-            // Map Markers
             const newLatLng = new L.LatLng(lat, lng);
             userDot.setLatLng(newLatLng);
             accCircle.setLatLng(newLatLng);
             accCircle.setRadius(acc);
 
-            // Trigger line update to snap start point to new location
+            // Update line origin
             updateUI(currentHeading);
 
             if (firstFix) {
-                map.setView(newLatLng, 13); // Zoom out a bit to see the line better
+                map.setView(newLatLng, 13);
                 firstFix = false;
             }
         }
