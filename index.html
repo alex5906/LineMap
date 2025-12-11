@@ -429,9 +429,9 @@
             
             tape.style.transform = `translateX(${x}px)`;
 
-            // Line Update (Curved Geodesic - 500 steps for smoothness)
+            // Line Update (Curved Geodesic - 10000 miles, 500 steps for smoothness)
             if (currentLat !== null && currentLng !== null) {
-                const pathPoints = calculateGeodesicPath(currentLat, currentLng, finalHeading, 5000, 500);
+                const pathPoints = calculateGeodesicPath(currentLat, currentLng, finalHeading, 10000, 500);
                 headingLine.setLatLngs(pathPoints);
             }
         }
