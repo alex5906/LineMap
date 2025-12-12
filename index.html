@@ -21,6 +21,7 @@
             color: white;
             overflow: hidden;
             user-select: none; 
+            -webkit-tap-highlight-color: transparent; /* Remove tap highlight on mobile */
         }
 
         /* --- 1. TOP COMPASS SECTION --- */
@@ -30,6 +31,7 @@
             flex-shrink: 0;
             padding-top: env(safe-area-inset-top); 
             cursor: ew-resize; 
+            touch-action: none; /* Critical for custom gestures */
         }
 
         #compass-content {
@@ -220,7 +222,7 @@
 
         /* --- INFO MODAL --- */
         #info-modal {
-            display: none; /* Hidden by default */
+            display: none; 
             position: fixed;
             top: 0; 
             left: 0; 
@@ -508,32 +510,27 @@
             updateUI(currentHeading);
         }
 
-        // --- CALIBRATION (SWIPE & DOUBLE TAP) ---
+        // --- CALIBRATION (UPDATED DOUBLE TAP LOGIC) ---
         const compassContainer = document.getElementById('compass-container');
         let startX = 0;
         let startOffset = 0;
-        let lastTap = 0; 
+        let lastTapTime = 0;
+        let isSwiping = false;
 
+        // 1. Touch Start: Initialize
         compassContainer.addEventListener('touchstart', (e) => {
             if (isLocked) return;
-            
-            const currentTime = new Date().getTime();
-            const tapLength = currentTime - lastTap;
-            if (tapLength < 300 && tapLength > 0) {
-                calibrationOffset = 0;
-                updateUI(currentHeading);
-                e.preventDefault(); 
-                return;
-            }
-            lastTap = currentTime;
-
             startX = e.touches[0].clientX;
             startOffset = calibrationOffset;
+            isSwiping = false; // Reset swipe flag
         }, {passive: false});
 
+        // 2. Touch Move: It's a swipe
         compassContainer.addEventListener('touchmove', (e) => {
             if (isLocked) return;
             e.preventDefault(); 
+            isSwiping = true; // User is definitively dragging
+            
             const currentX = e.touches[0].clientX;
             const deltaPx = currentX - startX;
             const deltaDeg = -(deltaPx / 8); 
@@ -541,6 +538,27 @@
             updateUI(currentHeading);
         }, {passive: false});
         
+        // 3. Touch End: Check if it was a tap
+        compassContainer.addEventListener('touchend', (e) => {
+            if (isLocked) return;
+            
+            // Only consider reset if we didn't drag/swipe
+            if (!isSwiping) {
+                const currentTime = new Date().getTime();
+                const tapLength = currentTime - lastTapTime;
+                
+                // Check if 2nd tap is within 300ms of 1st tap
+                if (tapLength < 300 && tapLength > 0) {
+                    // Double Tap Detected!
+                    calibrationOffset = 0; 
+                    updateUI(currentHeading);
+                    e.preventDefault();
+                }
+                lastTapTime = currentTime;
+            }
+        });
+        
+        // 4. Desktop Double Click
         compassContainer.addEventListener('dblclick', () => {
              if (isLocked) return;
              calibrationOffset = 0;
