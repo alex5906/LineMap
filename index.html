@@ -171,19 +171,17 @@
         }
         #lock-btn.active svg { fill: #ff3b30; }
 
-        /* Info Button (Top Left) */
-        #info-btn {
+        /* Center Button (Moved to Top Left) */
+        #center-btn {
             top: 20px;
             left: 20px;
         }
 
-        /* Center Button (Top Center) */
-        #center-btn {
-            top: 20px;
-            left: 50%;
-            margin-left: -25px; 
+        /* Info Button (Moved to Bottom Left) */
+        #info-btn {
+            bottom: 20px;
+            left: 20px;
         }
-
 
         /* Status Bubble (Center) */
         #status-msg {
@@ -336,15 +334,15 @@
             <span>Waiting for GPS Signal...</span>
         </div>
 
-        <div id="info-btn" class="hud-btn" onclick="toggleInfo()">
-            <svg viewBox="0 0 24 24">
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
-            </svg>
-        </div>
-
         <div id="center-btn" class="hud-btn" onclick="centerOnGPS()">
             <svg viewBox="0 0 24 24">
                 <path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3c-.46-4.17-3.77-7.48-7.94-7.94V1h-2v2.06C6.83 3.52 3.52 6.83 3.06 11H1v2h2.06c.46 4.17 3.77 7.48 7.94 7.94V23h2v-2.06c4.17-.46 7.48-3.77 7.94-7.94H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/>
+            </svg>
+        </div>
+
+        <div id="info-btn" class="hud-btn" onclick="toggleInfo()">
+            <svg viewBox="0 0 24 24">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
             </svg>
         </div>
 
@@ -510,13 +508,25 @@
             updateUI(currentHeading);
         }
 
-        // --- CALIBRATION ---
+        // --- CALIBRATION (SWIPE & DOUBLE TAP) ---
         const compassContainer = document.getElementById('compass-container');
         let startX = 0;
         let startOffset = 0;
+        let lastTap = 0; 
 
         compassContainer.addEventListener('touchstart', (e) => {
             if (isLocked) return;
+            
+            const currentTime = new Date().getTime();
+            const tapLength = currentTime - lastTap;
+            if (tapLength < 300 && tapLength > 0) {
+                calibrationOffset = 0;
+                updateUI(currentHeading);
+                e.preventDefault(); 
+                return;
+            }
+            lastTap = currentTime;
+
             startX = e.touches[0].clientX;
             startOffset = calibrationOffset;
         }, {passive: false});
@@ -530,6 +540,12 @@
             calibrationOffset = startOffset + deltaDeg;
             updateUI(currentHeading);
         }, {passive: false});
+        
+        compassContainer.addEventListener('dblclick', () => {
+             if (isLocked) return;
+             calibrationOffset = 0;
+             updateUI(currentHeading);
+        });
 
         // --- 6. BUTTON ACTIONS ---
         const lockBtn = document.getElementById('lock-btn');
