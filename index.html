@@ -21,7 +21,7 @@
             color: white;
             overflow: hidden;
             user-select: none; 
-            -webkit-tap-highlight-color: transparent; /* Remove tap highlight on mobile */
+            -webkit-tap-highlight-color: transparent; 
         }
 
         /* --- 1. TOP COMPASS SECTION --- */
@@ -31,7 +31,7 @@
             flex-shrink: 0;
             padding-top: env(safe-area-inset-top); 
             cursor: ew-resize; 
-            touch-action: none; /* Critical for custom gestures */
+            touch-action: none; 
         }
 
         #compass-content {
@@ -395,6 +395,7 @@
         let currentLng = null;
         let calibrationOffset = 0; 
         let isLocked = false; 
+        const DEFAULT_ZOOM = 13; // Configurable default zoom level
         
         // --- 2. MAP SETUP ---
         const map = L.map('map', { 
@@ -510,26 +511,24 @@
             updateUI(currentHeading);
         }
 
-        // --- CALIBRATION (UPDATED DOUBLE TAP LOGIC) ---
+        // --- CALIBRATION (TOUCH & CLICK) ---
         const compassContainer = document.getElementById('compass-container');
         let startX = 0;
         let startOffset = 0;
         let lastTapTime = 0;
         let isSwiping = false;
 
-        // 1. Touch Start: Initialize
         compassContainer.addEventListener('touchstart', (e) => {
             if (isLocked) return;
             startX = e.touches[0].clientX;
             startOffset = calibrationOffset;
-            isSwiping = false; // Reset swipe flag
+            isSwiping = false; 
         }, {passive: false});
 
-        // 2. Touch Move: It's a swipe
         compassContainer.addEventListener('touchmove', (e) => {
             if (isLocked) return;
             e.preventDefault(); 
-            isSwiping = true; // User is definitively dragging
+            isSwiping = true; 
             
             const currentX = e.touches[0].clientX;
             const deltaPx = currentX - startX;
@@ -538,18 +537,14 @@
             updateUI(currentHeading);
         }, {passive: false});
         
-        // 3. Touch End: Check if it was a tap
         compassContainer.addEventListener('touchend', (e) => {
             if (isLocked) return;
             
-            // Only consider reset if we didn't drag/swipe
             if (!isSwiping) {
                 const currentTime = new Date().getTime();
                 const tapLength = currentTime - lastTapTime;
                 
-                // Check if 2nd tap is within 300ms of 1st tap
                 if (tapLength < 300 && tapLength > 0) {
-                    // Double Tap Detected!
                     calibrationOffset = 0; 
                     updateUI(currentHeading);
                     e.preventDefault();
@@ -558,7 +553,6 @@
             }
         });
         
-        // 4. Desktop Double Click
         compassContainer.addEventListener('dblclick', () => {
              if (isLocked) return;
              calibrationOffset = 0;
@@ -589,7 +583,8 @@
 
         window.centerOnGPS = function() {
             if (currentLat !== null && currentLng !== null) {
-                map.panTo([currentLat, currentLng]);
+                // Centers map and resets zoom to default
+                map.setView([currentLat, currentLng], DEFAULT_ZOOM);
             }
         };
 
@@ -633,7 +628,7 @@
             updateUI(currentHeading);
 
             if (firstFix) {
-                map.setView(newLatLng, 13);
+                map.setView(newLatLng, DEFAULT_ZOOM);
                 firstFix = false;
             }
         }
