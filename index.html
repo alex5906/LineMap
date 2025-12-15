@@ -173,19 +173,59 @@
         }
         #lock-btn.active svg { fill: #ff3b30; }
 
-        /* Center Button (Moved to Top Left) */
+        /* Center Button (Top Left) */
         #center-btn {
             top: 20px;
             left: 20px;
         }
 
-        /* Info Button (Moved to Bottom Left) */
-        #info-btn {
+        /* Menu Button (Bottom Left) */
+        #menu-btn {
             bottom: 20px;
             left: 20px;
         }
 
-        /* Status Bubble (Center) */
+        /* --- MENU POPUP --- */
+        #main-menu {
+            display: none; /* Hidden by default */
+            position: absolute;
+            bottom: 80px; /* Appears just above the menu button */
+            left: 20px;
+            background-color: rgba(26, 26, 26, 0.95);
+            border: 2px solid #444;
+            border-radius: 12px;
+            padding: 5px 0;
+            min-width: 160px;
+            z-index: 2500;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.7);
+            backdrop-filter: blur(5px);
+            animation: slideUp 0.15s ease-out;
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .menu-item {
+            padding: 12px 20px;
+            color: #fff;
+            font-size: 1rem;
+            cursor: pointer;
+            border-bottom: 1px solid #333;
+            transition: background 0.2s;
+        }
+
+        .menu-item:last-child {
+            border-bottom: none;
+        }
+
+        .menu-item:active {
+            background-color: #333;
+            color: #00ffcc;
+        }
+
+        /* --- STATUS BUBBLE --- */
         #status-msg {
             position: absolute;
             top: 50%;
@@ -342,11 +382,15 @@
             </svg>
         </div>
 
-        <div id="info-btn" class="hud-btn" onclick="toggleInfo()">
+        <div id="menu-btn" class="hud-btn" onclick="toggleMenu()">
             <svg viewBox="0 0 24 24">
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
+                <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/>
             </svg>
         </div>
+
+        <div id="main-menu">
+            <div class="menu-item" onclick="openInfoFromMenu()">Information</div>
+            </div>
 
         <div id="lock-btn" class="hud-btn" onclick="toggleLock()">
             <svg id="icon-unlocked" viewBox="0 0 24 24">
@@ -358,10 +402,10 @@
         </div>
     </div>
 
-    <div id="info-modal" onclick="toggleInfo()">
+    <div id="info-modal" onclick="closeInfo()">
         <div class="modal-content" onclick="event.stopPropagation()">
             <p>sausage</p>
-            <button class="modal-btn" onclick="toggleInfo()">Close</button>
+            <button class="modal-btn" onclick="closeInfo()">Close</button>
         </div>
     </div>
 
@@ -395,7 +439,7 @@
         let currentLng = null;
         let calibrationOffset = 0; 
         let isLocked = false; 
-        const DEFAULT_ZOOM = 13; // Configurable default zoom level
+        const DEFAULT_ZOOM = 13;
         
         // --- 2. MAP SETUP ---
         const map = L.map('map', { 
@@ -583,19 +627,41 @@
 
         window.centerOnGPS = function() {
             if (currentLat !== null && currentLng !== null) {
-                // Centers map and resets zoom to default
                 map.setView([currentLat, currentLng], DEFAULT_ZOOM);
             }
         };
 
-        window.toggleInfo = function() {
-            const modal = document.getElementById('info-modal');
-            if (modal.style.display === 'flex') {
-                modal.style.display = 'none';
+        // --- MENU LOGIC ---
+        window.toggleMenu = function() {
+            const menu = document.getElementById('main-menu');
+            if (menu.style.display === 'block') {
+                menu.style.display = 'none';
             } else {
-                modal.style.display = 'flex';
+                menu.style.display = 'block';
             }
         };
+
+        window.openInfoFromMenu = function() {
+            // Close menu first
+            document.getElementById('main-menu').style.display = 'none';
+            // Open modal
+            document.getElementById('info-modal').style.display = 'flex';
+        };
+
+        window.closeInfo = function() {
+            document.getElementById('info-modal').style.display = 'none';
+        };
+
+        // Close menu if clicking outside
+        document.addEventListener('click', function(event) {
+            const menu = document.getElementById('main-menu');
+            const menuBtn = document.getElementById('menu-btn');
+            if (menu.style.display === 'block' && 
+                !menu.contains(event.target) && 
+                !menuBtn.contains(event.target)) {
+                menu.style.display = 'none';
+            }
+        });
 
 
         // --- 7. GPS LOGIC ---
